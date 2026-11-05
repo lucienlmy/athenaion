@@ -63,7 +63,9 @@ export const bakeRegistry = new Map();
 export async function loadOrBuild(name, build) {
   if (isNode) { const g = await build(); bakeRegistry.set(name, g); return g; }
   try {
-    const res = await fetch(`/generated/${name}.bin`);
+    // Relative URL so it works both on root hosts (Cloudflare Pages) and project subpaths (GitHub Pages)
+    const url = new URL(`../../generated/${name}.bin`, import.meta.url);
+    const res = await fetch(url);
     if (res.ok) return deserializeGeometry(await res.arrayBuffer());
   } catch { /* fall through */ }
   console.log(`[cache] ${name} not baked, building at runtime`);
