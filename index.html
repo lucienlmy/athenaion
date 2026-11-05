@@ -16,12 +16,27 @@
       font: 14px/1.5 ui-monospace, Consolas, monospace;
       z-index: 1000;
     }
-    #loading .panel { width: min(420px, 88vw); text-align: center; }
+    #loading .panel { width: min(460px, 92vw); text-align: center; }
     #loading .title { font-size: 18px; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 6px; color: #f0e6d2; }
+    #loading .subtitle { color: #8a8378; font-size: 12px; margin-bottom: 18px; }
     #loading .status { min-height: 1.4em; margin-bottom: 14px; color: #b8b0a0; font-size: 13px; }
     #loading .bar { height: 8px; border-radius: 999px; background: rgba(232, 226, 212, 0.12); overflow: hidden; }
     #loading .bar > i { display: block; height: 100%; width: 0%; border-radius: 999px; background: linear-gradient(90deg, #c4a574, #e8d5a8); transition: width 0.25s ease; }
     #loading .meta { margin-top: 10px; font-size: 12px; color: #8a8378; }
+    #quality-picker { display: grid; gap: 10px; margin: 8px 0 4px; text-align: left; }
+    #quality-picker button {
+      appearance: none; border: 1px solid rgba(232, 226, 212, 0.18);
+      background: rgba(232, 226, 212, 0.04); color: #e8e2d4;
+      border-radius: 10px; padding: 12px 14px; cursor: pointer;
+      font: inherit; text-align: left; transition: border-color .15s, background .15s;
+    }
+    #quality-picker button:hover { border-color: rgba(196, 165, 116, 0.7); background: rgba(196, 165, 116, 0.1); }
+    #quality-picker button.recommended { border-color: rgba(196, 165, 116, 0.55); }
+    #quality-picker .q-name { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; color: #f0e6d2; }
+    #quality-picker .q-tag { font-size: 11px; color: #c4a574; letter-spacing: 0.04em; }
+    #quality-picker .q-desc { margin-top: 4px; font-size: 12px; color: #9a9286; }
+    #load-progress { display: none; }
+    #load-progress.active { display: block; }
   </style>
   <script type="importmap">
     {
@@ -36,9 +51,32 @@
   <div id="loading">
     <div class="panel">
       <div class="title">Athenaion</div>
-      <div class="status" id="load-status">starting…</div>
-      <div class="bar"><i id="load-bar"></i></div>
-      <div class="meta" id="load-meta">0%</div>
+      <div class="subtitle" id="load-subtitle">Choose quality before building the world</div>
+
+      <div id="quality-picker">
+        <button type="button" data-quality="low">
+          <div class="q-name"><span>Low</span><span class="q-tag">FASTEST</span></div>
+          <div class="q-desc">Lightest geometry · shortest wait · weaker GPUs</div>
+        </button>
+        <button type="button" data-quality="preview" class="recommended">
+          <div class="q-name"><span>Preview</span><span class="q-tag">RECOMMENDED</span></div>
+          <div class="q-desc">Balanced detail · good for most PCs · ~3–5 min</div>
+        </button>
+        <button type="button" data-quality="high">
+          <div class="q-name"><span>High</span></div>
+          <div class="q-desc">Full density · slower build · stronger GPU needed</div>
+        </button>
+        <button type="button" data-quality="ultra">
+          <div class="q-name"><span>Ultra</span></div>
+          <div class="q-desc">Maximum quality · very heavy · may run out of memory</div>
+        </button>
+      </div>
+
+      <div id="load-progress">
+        <div class="status" id="load-status">starting…</div>
+        <div class="bar"><i id="load-bar"></i></div>
+        <div class="meta" id="load-meta">0%</div>
+      </div>
     </div>
   </div>
   <script type="module" src="./src/main.js"></script>

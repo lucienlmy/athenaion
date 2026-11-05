@@ -1,12 +1,20 @@
 // Quality presets. Modules must scale their density/resolution with these numbers so the
 // interactive preview stays usable on an integrated GPU while offline renders go all out.
 export const QUALITY = {
+  low: {
+    name: 'low', spp: 1, msaa: 1,
+    shadowMapSize: 1024, cascades: 2, shadowMaxFar: 900, softShadows: false,
+    terrainRes: 0.3,
+    density: 0.25,
+    detail: 0.35,
+    cloudSteps: 8, bloom: false, ao: false,
+  },
   preview: {
     name: 'preview', spp: 1, msaa: 4,
     shadowMapSize: 2048, cascades: 3, shadowMaxFar: 1400, softShadows: false,
-    terrainRes: 0.5,      // multiplier on terrain mesh resolution
-    density: 0.45,        // vegetation / city / props instance density multiplier
-    detail: 0.5,          // geometric detail multiplier (segments, sculpt resolution)
+    terrainRes: 0.5,
+    density: 0.45,
+    detail: 0.5,
     cloudSteps: 16, bloom: true, ao: false,
   },
   high: {

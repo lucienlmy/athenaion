@@ -16,15 +16,51 @@ function setLoading(status, pct, meta) {
   if (m) m.textContent = meta ?? (pct != null ? `${Math.round(pct)}%` : '');
 }
 
+function showProgressUI() {
+  const picker = document.getElementById('quality-picker');
+  const progress = document.getElementById('load-progress');
+  const subtitle = document.getElementById('load-subtitle');
+  if (picker) picker.style.display = 'none';
+  if (progress) progress.classList.add('active');
+  if (subtitle) subtitle.textContent = 'Building the world — please keep this tab in the foreground';
+}
+
+function chooseQuality() {
+  // URL ?quality= already set → skip picker (tools / deep links)
+  if (P.get('quality')) return Promise.resolve(P.get('quality'));
+  // Non-interactive offline modes also skip
+  if ((P.get('mode') || 'interactive') !== 'interactive') return Promise.resolve('preview');
+
+  return new Promise((resolve) => {
+    const picker = document.getElementById('quality-picker');
+    if (!picker) return resolve('preview');
+    picker.addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-quality]');
+      if (!btn) return;
+      const q = btn.getAttribute('data-quality') || 'preview';
+      // Reflect choice in the URL without full reload
+      try {
+        const u = new URL(location.href);
+        u.searchParams.set('quality', q);
+        history.replaceState(null, '', u);
+      } catch { /* ignore */ }
+      resolve(q);
+    });
+  });
+}
+
 async function boot() {
   const mode = P.get('mode') || 'interactive';
-  const quality = getQuality(P.get('quality') || 'preview');
+  const qualityName = await chooseQuality();
+  showProgressUI();
+
+  const quality = getQuality(qualityName);
   if (P.get('spp')) quality.spp = Number(P.get('spp'));
   const W = Number(P.get('w')) || (mode === 'interactive' ? Math.round(innerWidth * Math.min(devicePixelRatio, 1)) : 1672);
   const H = Number(P.get('h')) || (mode === 'interactive' ? Math.round(innerHeight * Math.min(devicePixelRatio, 1)) : 941);
   if (mode === 'interactive') document.body.classList.add('interactive');
 
-  setLoading('creating engine…', 2);
+  setLoading(`creating engine (${quality.name})…`, 2);
   const engine = await createEngine({ width: W, height: H, quality, params: P });
   window.engine = engine;
   const t0 = performance.now();
@@ -40,9 +76,9 @@ async function boot() {
       if (p.phase === 'module') {
         const label = p.done ? `finished ${p.module}` : `building ${p.module}…`;
         const pct = 5 + (p.pct * 0.85);
-        setLoading(label, pct, `${p.index}/${p.total} · ${Math.round(pct)}%`);
+        setLoading(label, pct, `${p.index}/${p.total} · ${Math.round(pct)}% · ${quality.name}`);
       } else if (p.phase === 'done') {
-        setLoading('world modules done', 90, '90%');
+        setLoading('world modules done', 90, `90% · ${quality.name}`);
       }
     });
   }
@@ -51,7 +87,7 @@ async function boot() {
   engine.prepareScene();
   const buildMs = Math.round(performance.now() - t0);
   window.__STATS = { buildMs };
-  console.log(`[main] world built in ${buildMs} ms`);
+  console.log(`[main] world built in ${buildMs} ms (quality=${quality.name})`);
 
   const shotById = (id) => SHOTS.find((s) => String(s.id) === String(id));
 
@@ -167,5 +203,6 @@ async function startInteractive(engine, shotById) {
 boot().catch((e) => {
   console.error(e);
   window.__RENDER_ERROR = (e && (e.stack || e.message)) || String(e);
+  showProgressUI();
   setLoading(`error: ${e?.message || e}`, 0, 'failed');
 });
