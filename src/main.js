@@ -1,13 +1,20 @@
 // Entry point.
-//   Interactive:  http://localhost:8080/?shot=3&quality=preview      (orbit with mouse; keys 1-9 jump to shots; P prints camera)
-//   Offline:      driven by tools/render.mjs (mode=still) which calls window.__renderShot(id)
-//   Module test:  ?test=temple&view=0   renders src/modules/temple.js test() in a neutral scene
+// Interactive: ?shot=3&quality=preview  |  Offline: tools/render.mjs  |  Test: ?test=temple&view=0
 import * as THREE from 'three';
 import { createEngine } from './core/engine.js';
 import { getQuality } from './core/quality.js';
 import { SHOTS } from './world/shots.js';
 
 const P = new URLSearchParams(location.search);
+
+function setLoading(status, pct, meta) {
+  const s = document.getElementById('load-status');
+  const b = document.getElementById('load-bar');
+  const m = document.getElementById('load-meta');
+  if (s) s.textContent = status;
+  if (b) b.style.width = `${Math.max(0, Math.min(100, pct ?? 0))}%`;
+  if (m) m.textContent = meta ?? (pct != null ? `${Math.round(pct)}%` : '');
+}
 
 async function boot() {
   const mode = P.get('mode') || 'interactive';
@@ -17,23 +24,34 @@ async function boot() {
   const H = Number(P.get('h')) || (mode === 'interactive' ? Math.round(innerHeight * Math.min(devicePixelRatio, 1)) : 941);
   if (mode === 'interactive') document.body.classList.add('interactive');
 
+  setLoading('creating engine…', 2);
   const engine = await createEngine({ width: W, height: H, quality, params: P });
   window.engine = engine;
   const t0 = performance.now();
 
   let testInfo = null;
   if (P.get('test')) {
+    setLoading('building test scene…', 10);
     const { buildTestScene } = await import('./test/testScene.js');
     testInfo = await buildTestScene(engine, P.get('test'), Number(P.get('view') || 0));
   } else {
     const { buildWorld } = await import('./world/index.js');
-    await buildWorld(engine);
+    await buildWorld(engine, (p) => {
+      if (p.phase === 'module') {
+        const label = p.done ? `finished ${p.module}` : `building ${p.module}…`;
+        const pct = 5 + (p.pct * 0.85);
+        setLoading(label, pct, `${p.index}/${p.total} · ${Math.round(pct)}%`);
+      } else if (p.phase === 'done') {
+        setLoading('world modules done', 90, '90%');
+      }
+    });
   }
+
+  setLoading('preparing scene…', 92);
   engine.prepareScene();
   const buildMs = Math.round(performance.now() - t0);
   window.__STATS = { buildMs };
   console.log(`[main] world built in ${buildMs} ms`);
-  document.getElementById('loading')?.remove();
 
   const shotById = (id) => SHOTS.find((s) => String(s.id) === String(id));
 
@@ -43,20 +61,27 @@ async function boot() {
     engine.applyShot(s);
     return await engine.renderStill(quality.spp);
   };
-  // used by tools/session.mjs (persistent render session for camera direction / look-dev)
   window.__SHOTS = SHOTS;
   window.__renderShotObj = async (s, spp) => {
     engine.applyShot(s);
     return await engine.renderStill(spp ?? quality.spp);
   };
-  // GPU profiler: time per sample with each module hidden in turn (tools/session.mjs + snap --eval)
   window.__profile = async (shotId, spp = 2) => {
     engine.applyShot(shotById(shotId));
     const time = async () => { await engine.renderStill(spp); return engine.stats.renderMs / spp; };
-    await time(); // warm-up (lazy shader compiles)
+    await time();
     const base = await time();
     const rows = [];
-    const tris = (objs) => { let t = 0; for (const o of objs) o.traverse((m) => { if (!m.isMesh || !m.geometry) return; const g = m.geometry; const n = (g.index ? g.index.count : g.attributes.position?.count || 0) / 3; t += n * (m.isInstancedMesh ? m.count : 1); }); return t; };
+    const tris = (objs) => {
+      let t = 0;
+      for (const o of objs) o.traverse((m) => {
+        if (!m.isMesh || !m.geometry) return;
+        const g = m.geometry;
+        const n = (g.index ? g.index.count : g.attributes.position?.count || 0) / 3;
+        t += n * (m.isInstancedMesh ? m.count : 1);
+      });
+      return t;
+    };
     for (const [name, roots] of Object.entries(engine.moduleRoots || {})) {
       const vis = roots.map((r) => r.visible);
       roots.forEach((r) => (r.visible = false));
@@ -67,19 +92,25 @@ async function boot() {
     rows.sort((a, b) => b.msSaved - a.msSaved);
     return { shot: shotId, msPerSample: Math.round(base), calls: engine.stats.calls, mTrisDrawn: +((engine.stats.triangles || 0) / 1e6).toFixed(1), rows };
   };
-  // video frame renderer (tools/render-video.mjs)
-  if (!P.get('test')) { const { setupVideo } = await import('./video/player.js'); setupVideo(engine, SHOTS); }
+  if (!P.get('test')) {
+    const { setupVideo } = await import('./video/player.js');
+    setupVideo(engine, SHOTS);
+  }
   window.__renderTest = async () => {
     engine.applyShot(testInfo.shot);
     return await engine.renderStill(quality.spp);
   };
-  // compile everything up front so the first sample isn't a hitch
+
+  setLoading('compiling shaders…', 95);
   if (!P.get('test')) engine.applyShot(shotById(P.get('shot') || 1) || SHOTS[0]);
   else engine.applyShot(testInfo.shot);
   const tc = performance.now();
   await engine.renderer.compileAsync(engine.scene, engine.camera);
   console.log(`[main] shaders compiled in ${Math.round(performance.now() - tc)} ms`);
   window.__READY = true;
+
+  setLoading('ready', 100, '100%');
+  document.getElementById('loading')?.remove();
 
   if (mode === 'interactive') startInteractive(engine, shotById);
 }
@@ -96,13 +127,23 @@ async function startInteractive(engine, shotById) {
   syncTarget();
   let moving = true;
   controls.addEventListener('change', () => { moving = true; });
-  const hud = document.createElement('div'); hud.id = 'hud'; document.body.appendChild(hud);
+  const hud = document.createElement('div');
+  hud.id = 'hud';
+  document.body.appendChild(hud);
   addEventListener('keydown', (e) => {
-    if (e.key >= '1' && e.key <= '9') { const s = shotById(e.key); if (s) { engine.applyShot(s); syncTarget(); moving = true; } }
+    if (e.key >= '1' && e.key <= '9') {
+      const s = shotById(e.key);
+      if (s) { engine.applyShot(s); syncTarget(); moving = true; }
+    }
     if (e.key === 'p' || e.key === 'P') {
       const p = cam.position, t = controls.target;
-      const txt = JSON.stringify({ pos: [p.x, p.y, p.z].map((v) => +v.toFixed(1)), target: [t.x, t.y, t.z].map((v) => +v.toFixed(1)), fov: cam.fov });
-      console.log(txt); navigator.clipboard?.writeText(txt).catch(() => {});
+      const txt = JSON.stringify({
+        pos: [p.x, p.y, p.z].map((v) => +v.toFixed(1)),
+        target: [t.x, t.y, t.z].map((v) => +v.toFixed(1)),
+        fov: cam.fov,
+      });
+      console.log(txt);
+      navigator.clipboard?.writeText(txt).catch(() => {});
     }
   });
   const clock = new THREE.Clock();
@@ -114,7 +155,8 @@ async function startInteractive(engine, shotById) {
     engine.renderInteractive(moving);
     moving = false;
     const p = cam.position;
-    hud.textContent = `shot ${engine.shot?.id ?? '-'}  quality ${engine.quality.name}  samples ${engine._accFrames}\n` +
+    hud.textContent =
+      `shot ${engine.shot?.id ?? '-'}  quality ${engine.quality.name}  samples ${engine._accFrames}\n` +
       `cam ${p.x.toFixed(0)} ${p.y.toFixed(0)} ${p.z.toFixed(0)}  fov ${cam.fov}\n` +
       `calls ${engine.renderer.info.render.calls}  tris ${(engine.renderer.info.render.triangles / 1e6).toFixed(2)}M\n` +
       `keys: 1-9 shots · P copy camera · ?animate=1 for motion`;
@@ -125,4 +167,5 @@ async function startInteractive(engine, shotById) {
 boot().catch((e) => {
   console.error(e);
   window.__RENDER_ERROR = (e && (e.stack || e.message)) || String(e);
+  setLoading(`error: ${e?.message || e}`, 0, 'failed');
 });

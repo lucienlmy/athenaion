@@ -1,38 +1,39 @@
 // Builds the full world by running each module's build(engine) in dependency order.
 // A failing module is logged and skipped so one broken piece never blanks the whole world.
-// Order matters: terrain → architecture (registers footprints) → city → vegetation (avoids footprints).
 export const MODULE_ORDER = [
-  'terrain',      // ground mesh, cliffs, far mountains
-  'water',        // sea, lagoon, river surfaces
-  'temple',       // main Athenaion + other classical buildings at layout anchors
-  'acropolis',    // terraces, retaining walls, grand stair, plazas, mosaics, balustrades
-  'aqueducts',    // aqueducts & bridges
-  'sets',         // shot-specific foreground sets (terraces, balustrades, props) — push slots for statues/banners
-  'statues',      // colossi + statues on pedestals + pediment sculpture placement
-  'city',         // town houses, harbour, boats
-  'ruins',        // ruined portico, fallen columns, giant head (foreground sets)
-  'banners',      // banners with owl emblem, braziers & fire, urns
-  'vegetation',   // cypress, olive, pines, broadleaf trees, shrub masses
-  'flora',        // ivy, grass, flowers, moss, hero foreground branches & rocks
-  'waterfalls',   // waterfalls, foam, spray & mist
-  'clouds',       // mountain clouds, valley mist banks
-  'birds',        // seagulls
+  'terrain', 'water', 'temple', 'acropolis', 'aqueducts', 'sets', 'statues',
+  'city', 'ruins', 'banners', 'vegetation', 'flora', 'waterfalls', 'clouds', 'birds',
 ];
 
-export async function buildWorld(engine) {
+function yieldToBrowser() {
+  return new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
+}
+
+export async function buildWorld(engine, onProgress) {
   const skip = (engine.params.get('skip') || '').split(',').filter(Boolean);
   const only = (engine.params.get('only') || '').split(',').filter(Boolean);
-  for (const name of MODULE_ORDER) {
-    if (skip.includes(name) || (only.length && !only.includes(name))) continue;
+  const list = MODULE_ORDER.filter((name) => !skip.includes(name) && (!only.length || only.includes(name)));
+  const total = list.length;
+  let done = 0;
+
+  for (const name of list) {
+    onProgress?.({ phase: 'module', module: name, index: done, total, pct: Math.round((done / total) * 100) });
+    await yieldToBrowser();
+
     let mod;
     try {
       mod = await import(`../modules/${name}.js`);
     } catch (e) {
-      if (String(e).includes('Failed to fetch') || String(e).includes('404')) { console.log(`[world] module ${name}: not present`); continue; }
+      if (String(e).includes('Failed to fetch') || String(e).includes('404')) {
+        console.log(`[world] module ${name}: not present`);
+        done++;
+        continue;
+      }
       console.error(`[world] module ${name} failed to load:`, e.stack || e);
+      done++;
       continue;
     }
-    if (typeof mod.build !== 'function') continue;
+    if (typeof mod.build !== 'function') { done++; continue; }
     const t0 = performance.now();
     const before = new Set(engine.scene.children);
     try {
@@ -42,5 +43,9 @@ export async function buildWorld(engine) {
     } catch (e) {
       console.error(`[world] module ${name} threw during build:`, e.stack || e);
     }
+    done++;
+    onProgress?.({ phase: 'module', module: name, index: done, total, pct: Math.round((done / total) * 100), done: true });
   }
+
+  onProgress?.({ phase: 'done', index: total, total, pct: 100 });
 }

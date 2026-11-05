@@ -10,7 +10,18 @@
     body.interactive canvas { width: 100vw; height: 100vh; object-fit: contain; }
     #hud { position: fixed; left: 12px; bottom: 10px; color: #e8e2d4; font: 12px/1.4 ui-monospace, Consolas, monospace;
            background: rgba(10, 12, 16, 0.55); padding: 8px 10px; border-radius: 6px; pointer-events: none; white-space: pre; }
-    #loading { position: fixed; inset: 0; display: grid; place-items: center; color: #e8e2d4; font: 15px ui-monospace, Consolas, monospace; }
+    #loading {
+      position: fixed; inset: 0; display: grid; place-items: center;
+      background: #0d0f12; color: #e8e2d4;
+      font: 14px/1.5 ui-monospace, Consolas, monospace;
+      z-index: 1000;
+    }
+    #loading .panel { width: min(420px, 88vw); text-align: center; }
+    #loading .title { font-size: 18px; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 6px; color: #f0e6d2; }
+    #loading .status { min-height: 1.4em; margin-bottom: 14px; color: #b8b0a0; font-size: 13px; }
+    #loading .bar { height: 8px; border-radius: 999px; background: rgba(232, 226, 212, 0.12); overflow: hidden; }
+    #loading .bar > i { display: block; height: 100%; width: 0%; border-radius: 999px; background: linear-gradient(90deg, #c4a574, #e8d5a8); transition: width 0.25s ease; }
+    #loading .meta { margin-top: 10px; font-size: 12px; color: #8a8378; }
   </style>
   <script type="importmap">
     {
@@ -22,7 +33,14 @@
   </script>
 </head>
 <body>
-  <div id="loading">building the world…</div>
+  <div id="loading">
+    <div class="panel">
+      <div class="title">Athenaion</div>
+      <div class="status" id="load-status">starting…</div>
+      <div class="bar"><i id="load-bar"></i></div>
+      <div class="meta" id="load-meta">0%</div>
+    </div>
+  </div>
   <script type="module" src="./src/main.js"></script>
 </body>
 </html>
